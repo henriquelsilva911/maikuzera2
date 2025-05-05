@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Access Content</title>
+    <title>Location Access</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -14,51 +14,73 @@
         }
         button {
             padding: 12px 24px;
-            background-color: #4CAF50;
+            background-color: #4285F4;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-size: 16px;
-            margin-top: 20px;
+            margin: 20px 0;
+            transition: background-color 0.3s;
         }
         button:hover {
-            background-color: #45a049;
+            background-color: #3367D6;
         }
         #status {
             margin-top: 20px;
-            color: #666;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .error {
+            color: #D32F2F;
+            background-color: #FFEBEE;
+        }
+        .success {
+            color: #388E3C;
+            background-color: #E8F5E9;
         }
     </style>
 </head>
 <body>
-    <h1>Location Permission Required</h1>
-    <p>Please enable location sharing to access the content</p>
+    <h1>Location Permission</h1>
+    <p>We need your location to provide personalized content</p>
     
-    <button onclick="requestLocation()">Share My Location</button>
+    <button onclick="requestLocationAccess()">Share My Location</button>
     
     <div id="status"></div>
 
     <script>
-    async function requestLocation() {
+    function updateStatus(message, isError = false) {
         const statusEl = document.getElementById('status');
-        statusEl.textContent = "Processing your request...";
+        statusEl.textContent = message;
+        statusEl.className = isError ? 'error' : 'success';
+    }
+
+    async function requestLocationAccess() {
+        updateStatus("Requesting location...");
         
         try {
-            // Get location
+            // Get current position
             const position = await new Promise((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                });
+                navigator.geolocation.getCurrentPosition(
+                    resolve, 
+                    reject,
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
             });
 
-            // Send to server (keeping original Portuguese endpoint)
-            const response = await fetch('/localizacao', {
+            updateStatus("Location received, sending to server...");
+            
+            // Send to server
+            const response = await fetch('/api/localizacao', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     latitude: position.coords.latitude,
@@ -66,17 +88,28 @@
                 })
             });
 
-            const result = await response.json();
-
-            if (result.status === "success") {
-                window.location.href = "/conteudo";  // Portuguese route maintained
-            } else {
-                statusEl.textContent = "Error: " + (result.message || "Failed to save location");
+            // Handle JSON response properly
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error("Invalid server response");
             }
+
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.mensagem || "Server error");
+            }
+
+            if (result.status === "sucesso") {
+                updateStatus("Success! Redirecting...");
+                window.location.href = "/conteudo";
+            } else {
+                throw new Error(result.mensagem || "Unknown error");
+            }
+            
         } catch (error) {
-            statusEl.textContent = "Error: " + 
-                (error.message || "Location access is required to continue");
             console.error("Error details:", error);
+            updateStatus(`Error: ${error.message}`, true);
         }
     }
     </script>
