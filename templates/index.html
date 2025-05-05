@@ -3,59 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome</title>
+    <title>Access Content</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            text-align: center;
+            max-width: 600px;
+            margin: 0 auto;
             padding: 20px;
+            text-align: center;
         }
         button {
-            padding: 10px 20px;
-            font-size: 16px;
+            padding: 12px 24px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
             cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin-top: 20px;
+            color: #666;
         }
     </style>
 </head>
 <body>
-    <div id="request-location">
-        <h1>Permission Required</h1>
-        <p>Please allow location access to continue</p>
-        <button onclick="getLocation()">Allow Location</button>
-    </div>
+    <h1>Location Permission Required</h1>
+    <p>Please enable location sharing to access the content</p>
+    
+    <button onclick="requestLocation()">Share My Location</button>
+    
+    <div id="status"></div>
 
     <script>
-    function getLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    fetch('/location', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude
-                        })
-                    })
-                    .then(response => {
-                        if (response.ok) {
-                            window.location.href = "/conteudo";
-                        } else {
-                            alert("Error saving location");
-                        }
-                    })
-                    .catch(error => {
-                        alert("Connection error");
-                    });
+    async function requestLocation() {
+        const statusEl = document.getElementById('status');
+        statusEl.textContent = "Processing your request...";
+        
+        try {
+            // Get location
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+
+            // Send to server (keeping original Portuguese endpoint)
+            const response = await fetch('/localizacao', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
                 },
-                (error) => {
-                    alert("Location access is required to continue");
-                }
-            );
-        } else {
-            alert("Geolocation is not supported by your browser");
+                body: JSON.stringify({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.status === "success") {
+                window.location.href = "/conteudo";  // Portuguese route maintained
+            } else {
+                statusEl.textContent = "Error: " + (result.message || "Failed to save location");
+            }
+        } catch (error) {
+            statusEl.textContent = "Error: " + 
+                (error.message || "Location access is required to continue");
+            console.error("Error details:", error);
         }
     }
     </script>
